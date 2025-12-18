@@ -1,0 +1,55 @@
+2025-12-15 18:55:02 API HIT
+Array
+(
+    [rfid] => E6C80C06
+    [door_id] => 1
+    [event] => tap_in
+)
+Array
+(
+    [rfid] => 161D9804
+    [door_id] => 1
+    [event] => tap_in
+)
+Array
+(
+)
+Array
+(
+    [rfid] => 161D9804
+    [door_id] => 1
+    [event] => tap_in
+)
+Array
+(
+)
+Array
+(
+    [rfid] => E6C80C06
+    [door_id] => 1
+    [event] => tap_in
+)
+Array
+(
+    [rfid] => E6C80C06
+    [door_id] => 1
+    [event] => tap_in
+)
+Array
+(
+    [rfid] => 161D9804
+    [door_id] => 1
+    [event] => tap_in
+)
+Array
+(
+    [rfid] => 161D9804
+    [door_id] => 1
+    [event] => tap_in
+)
+Array
+(
+    [rfid] => E6C80C06
+    [door_id] => 1
+    [event] => tap_in
+)
