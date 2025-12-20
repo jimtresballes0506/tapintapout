@@ -32,62 +32,126 @@ $success = '';
 
 // Handle form submissions (add / edit)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $mode       = $_POST['mode'] ?? 'add';
-    $id         = $_POST['id'] ?? null;
-    $fullname   = trim($_POST['fullname'] ?? '');
-    $username   = trim($_POST['username'] ?? '');
-    $email      = trim($_POST['email'] ?? '');
-    $student_id = trim($_POST['student_id'] ?? '');
+
+    $mode        = $_POST['mode'] ?? 'add';
+    $id          = $_POST['id'] ?? null;
+    $fullname    = trim($_POST['fullname'] ?? '');
+    $username    = trim($_POST['username'] ?? '');
+    $email       = trim($_POST['email'] ?? '');
+    $student_id  = trim($_POST['student_id'] ?? '');
     $employee_id = trim($_POST['employee_id'] ?? '');
-    $role       = $_POST['role'] ?? 'student';
-    $status     = $_POST['status'] ?? 'active';
-    $password   = $_POST['password'] ?? '';
+    $role        = $_POST['role'] ?? 'student';
+    $status      = $_POST['status'] ?? 'active';
+    $password    = $_POST['password'] ?? '';
 
-    if ($fullname === '' || $username === '') {
-        $errors[] = "Fullname and username are required.";
-    }
+    $errors = [];
 
-    if ($mode === 'add' && $password === '') {
-        $errors[] = "Password is required for new users.";
+    /* =======================
+       VALIDATION
+    ======================== */
+    if ($fullname === '') {
+        $errors[] = "Full name is required.";
     }
 
     if (empty($errors)) {
-        if ($mode === 'add') {
-            $hash = password_hash($password, PASSWORD_DEFAULT);
 
-            $stmt = $conn->prepare("INSERT INTO users 
+        /* =======================
+           ADD USER
+        ======================== */
+        if ($mode === 'add') {
+
+            $hash = ($role === 'admin' && $password !== '')
+                ? password_hash($password, PASSWORD_DEFAULT)
+                : null;
+
+            $stmt = $conn->prepare("
+                INSERT INTO users
                 (fullname, username, email, student_id, employee_id, role, password_hash, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("ssssssss",
-                $fullname, $username, $email, $student_id, $employee_id, $role, $hash, $status
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+
+            $usernameParam = ($username !== '') ? $username : null;
+
+            $stmt->bind_param(
+                "ssssssss",
+                $fullname,
+                $usernameParam,
+                $email,
+                $student_id,
+                $employee_id,
+                $role,
+                $hash,
+                $status
             );
+
             if ($stmt->execute()) {
                 $success = "User added successfully.";
             } else {
                 $errors[] = "Error inserting user: " . $conn->error;
             }
+
             $stmt->close();
-        } elseif ($mode === 'edit' && $id) {
-            if ($password !== '') {
-                // Update including password
+        }
+
+        /* =======================
+           EDIT USER
+        ======================== */
+        elseif ($mode === 'edit' && $id) {
+
+            if ($role === 'admin' && $password !== '') {
+
                 $hash = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $conn->prepare("UPDATE users
-                    SET fullname=?, username=?, email=?, student_id=?, employee_id=?,
-                        role=?, status=?, password_hash=?
-                    WHERE id=?");
-                $stmt->bind_param("ssssssssi",
-                    $fullname, $username, $email, $student_id, $employee_id,
-                    $role, $status, $hash, $id
+
+                $stmt = $conn->prepare("
+                    UPDATE users
+                    SET fullname = ?,
+                        username = ?,
+                        email = ?,
+                        student_id = ?,
+                        employee_id = ?,
+                        role = ?,
+                        status = ?,
+                        password_hash = ?
+                    WHERE id = ?
+                ");
+
+                $stmt->bind_param(
+                    "ssssssssi",
+                    $fullname,
+                    $username,
+                    $email,
+                    $student_id,
+                    $employee_id,
+                    $role,
+                    $status,
+                    $hash,
+                    $id
                 );
+
             } else {
-                // Update without changing password
-                $stmt = $conn->prepare("UPDATE users
-                    SET fullname=?, username=?, email=?, student_id=?, employee_id=?,
-                        role=?, status=?
-                    WHERE id=?");
-                $stmt->bind_param("sssssssi",
-                    $fullname, $username, $email, $student_id, $employee_id,
-                    $role, $status, $id
+
+                $stmt = $conn->prepare("
+                    UPDATE users
+                    SET fullname = ?,
+                        username = ?,
+                        email = ?,
+                        student_id = ?,
+                        employee_id = ?,
+                        role = ?,
+                        status = ?
+                    WHERE id = ?
+                ");
+
+                $stmt->bind_param(
+                    "sssssssi",
+                    $fullname,
+                    $username ?: null,
+                    $email,
+                    $student_id,
+                    $employee_id,
+                    $role,
+                    $status,
+                    $id
                 );
             }
 
@@ -96,10 +160,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $errors[] = "Error updating user: " . $conn->error;
             }
+
             $stmt->close();
         }
     }
 }
+
 
 // Handle deactivate / activate via GET
 if (isset($_GET['toggle']) && ctype_digit($_GET['toggle'])) {
@@ -238,12 +304,6 @@ include "includes/header.php";
                         </div>
 
                         <div>
-                            <label class="block text-sm mb-1">Username</label>
-                            <input type="text" name="username" class="w-full border rounded px-3 py-2"
-                                value="<?php echo htmlspecialchars($editUser['username'] ?? ''); ?>" required>
-                        </div>
-
-                        <div>
                             <label class="block text-sm mb-1">Email</label>
                             <input type="email" name="email" class="w-full border rounded px-3 py-2"
                                 value="<?php echo htmlspecialchars($editUser['email'] ?? ''); ?>">
@@ -259,8 +319,8 @@ include "includes/header.php";
                             <label class="block text-sm mb-1">Role</label>
                             <select name="role" class="w-full border rounded px-3 py-2">
                                 <?php
-                                $currentRole = $editUser['role'] ?? 'student';
-                                foreach (['admin','faculty','student'] as $r) {
+                                $currentRole = $editUser['role'];
+                                foreach (['admin','faculty'] as $r) {
                                     $sel = ($currentRole === $r) ? 'selected' : '';
                                     echo "<option value=\"$r\" $sel>" . ucfirst($r) . "</option>";
                                 }
@@ -279,13 +339,6 @@ include "includes/header.php";
                                 }
                                 ?>
                             </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm mb-1">
-                                <?php echo $isEdit ? 'New Password (leave blank to keep current)' : 'Password'; ?>
-                            </label>
-                            <input type="password" name="password" class="w-full border rounded px-3 py-2">
                         </div>
 
                         <div class="md:col-span-2 flex justify-end mt-2">
@@ -307,7 +360,6 @@ include "includes/header.php";
                                 <tr>
                                     <th class="px-3 py-2 text-left">ID</th>
                                     <th class="px-3 py-2 text-left">Fullname</th>
-                                    <th class="px-3 py-2 text-left">Username</th>
                                     <th class="px-3 py-2 text-left">Role</th>
                                     <th class="px-3 py-2 text-left">Status</th>
                                     <th class="px-3 py-2 text-left">Created</th>
@@ -326,7 +378,6 @@ include "includes/header.php";
                                     <tr class="border-b hover:bg-gray-50">
                                         <td class="px-3 py-2"><?php echo (int)$u['id']; ?></td>
                                         <td class="px-3 py-2"><?php echo htmlspecialchars($u['fullname']); ?></td>
-                                        <td class="px-3 py-2"><?php echo htmlspecialchars($u['username']); ?></td>
                                         <td class="px-3 py-2 capitalize"><?php echo htmlspecialchars($u['role']); ?></td>
                                         <td class="px-3 py-2 capitalize">
                                             <span class="px-2 py-1 rounded text-xs

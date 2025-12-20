@@ -296,12 +296,6 @@ include "includes/header.php";
                     </div>
 
                     <div>
-                    <label class="block text-sm mb-1">Academic Year</label>
-                    <input type="text" name="academic_year" class="w-full border rounded px-3 py-2"
-                        value="<?php echo htmlspecialchars($isEdit ? $editSchedule['academic_year'] : ''); ?>">
-                    </div>
-
-                    <div>
                     <label class="block text-sm mb-1">Semester</label>
                     <input type="text" name="semester" class="w-full border rounded px-3 py-2"
                         value="<?php echo htmlspecialchars($isEdit ? $editSchedule['semester'] : ''); ?>">
@@ -329,7 +323,7 @@ include "includes/header.php";
                         <th class="px-3 py-2 text-left">Day</th>
                         <th class="px-3 py-2 text-left">Time</th>
                         <th class="px-3 py-2 text-left">Subject</th>
-                        <th class="px-3 py-2 text-left">AY / Sem</th>
+                        <th class="px-3 py-2 text-left">Sem</th>
                         <th class="px-3 py-2 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -345,7 +339,7 @@ include "includes/header.php";
                             <td class="px-3 py-2"><?php echo htmlspecialchars($s['day_of_week']); ?></td>
                             <td class="px-3 py-2"><?php echo htmlspecialchars(substr($s['start_time'],0,5) . ' - ' . substr($s['end_time'],0,5)); ?></td>
                             <td class="px-3 py-2"><?php echo htmlspecialchars($s['subject_code'] . ' ' . $s['subject_name']); ?></td>
-                            <td class="px-3 py-2"><?php echo htmlspecialchars($s['academic_year'] . ' / ' . $s['semester']); ?></td>
+                            <td class="px-3 py-2"><?php echo htmlspecialchars($s['semester']); ?></td>
                             <td class="px-3 py-2 text-right">
                                 <a href="schedules.php?edit=<?php echo (int)$s['id']; ?>" class="text-blue-600 hover:underline text-xs">Edit</a>
                                 <a href="schedules.php?delete=<?php echo (int)$s['id']; ?>" class="text-red-600 hover:underline text-xs" onclick="return confirm('Delete this schedule?');">Delete</a>

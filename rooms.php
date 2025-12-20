@@ -261,63 +261,125 @@ include "includes/header.php";
                 </form>
                 </div>
 
-                <!-- Rooms table -->
-                <div class="bg-white shadow rounded-lg p-4">
-                <h2 class="text-lg font-semibold mb-3">All Rooms</h2>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
-                    <thead class="bg-gray-50 border-b">
-                        <tr>
-                        <th class="px-3 py-2 text-left">ID</th>
-                        <th class="px-3 py-2 text-left">Room Code</th>
-                        <th class="px-3 py-2 text-left">Room Name</th>
-                        <th class="px-3 py-2 text-left">Building</th>
-                        <th class="px-3 py-2 text-left">Floor</th>
-                        <th class="px-3 py-2 text-left">Status</th>
-                        <th class="px-3 py-2 text-left">Created</th>
-                        <th class="px-3 py-2 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php if (empty($rooms)): ?>
-                        <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No rooms found.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($rooms as $r): ?>
-                        <tr class="border-b hover:bg-gray-50">
-                            <td class="px-3 py-2"><?php echo (int)$r['id']; ?></td>
-                            <td class="px-3 py-2"><?php echo htmlspecialchars($r['room_code']); ?></td>
-                            <td class="px-3 py-2"><?php echo htmlspecialchars($r['room_name']); ?></td>
-                            <td class="px-3 py-2"><?php echo htmlspecialchars($r['building']); ?></td>
-                            <td class="px-3 py-2"><?php echo htmlspecialchars($r['floor']); ?></td>
-                            <td class="px-3 py-2">
-                            <span class="px-2 py-1 rounded text-xs <?php echo $r['status'] === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'; ?>">
-                                <?php echo htmlspecialchars($r['status']); ?>
-                            </span>
-                            </td>
-                            <td class="px-3 py-2 text-xs text-gray-500"><?php echo htmlspecialchars($r['created_at']); ?></td>
-                            <td class="px-3 py-2 text-right space-x-2">
-                            <a href="rooms.php?edit=<?php echo (int)$r['id']; ?>" class="text-blue-600 hover:underline text-xs">Edit</a>
-                            <a href="rooms.php?toggle=<?php echo (int)$r['id']; ?>" class="text-red-600 hover:underline text-xs" onclick="return confirm('Change status for this room?');">
-                                <?php echo $r['status'] === 'active' ? 'Set Maintenance' : 'Set Active'; ?>
-                            </a>
-                            <a href="rooms.php?delete=<?php echo (int)$r['id']; ?>"
-                                class="text-red-700 hover:underline text-xs"
-                                onclick="return confirm('Are you sure you want to permanently delete this room?');">
-                                Delete
-                            </a>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                    </tbody>
-                    </table>
+                <!-- Rooms cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <?php foreach ($rooms as $r): ?>
+                <?php
+                $occupied = ($r['occupancy_status'] ?? 'available') === 'occupied';
+                $locked   = !$occupied; // assumption: occupied = unlocked
+                ?>
+                <div class="bg-white rounded-xl shadow p-4 border
+                    <?= $occupied ? 'border-red-400' : 'border-green-400' ?>">
+
+                    <!-- HEADER -->
+                    <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="font-semibold text-lg"><?= htmlspecialchars($r['room_code']) ?></h3>
+                        <p class="text-sm text-gray-500"><?= htmlspecialchars($r['room_name']) ?></p>
+                        <p class="text-xs text-gray-400 mt-1">
+                        <?= htmlspecialchars($r['building']) ?> · Floor <?= htmlspecialchars($r['floor']) ?>
+                        </p>
+                    </div>
+
+                    <div class="flex flex-col items-end gap-2">
+                        <!-- Status badge -->
+                        <span class="text-xs px-2 py-1 rounded
+                        <?= $occupied ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700' ?>">
+                        <?= $occupied ? 'Occupied' : 'Available' ?>
+                        </span>
+
+                        <!-- EDIT BUTTON -->
+                        <a href="rooms.php?edit=<?= (int)$r['id'] ?>"
+                        class="text-xs bg-blue-600 hover:bg-blue-700
+                                text-white px-2 py-1 rounded">
+                        Edit
+                        </a>
+                    </div>
+                    </div>
+
+                    <!-- LOCK TOGGLE -->
+                    <div class="flex items-center justify-between mt-4">
+                    <span class="text-sm font-medium text-gray-700">
+                        Lock: <span id="lockText-<?= (int)$r['id'] ?>">Locked</span>
+                    </span>
+
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox"
+                            class="hidden"
+                            onchange="toggleRoomLock(<?= (int)$r['id'] ?>, this)">
+
+                        <!-- Track -->
+                        <div id="track-<?= (int)$r['id'] ?>"
+                            class="w-11 h-6 bg-gray-300 rounded-full transition-colors duration-300">
+                        </div>
+
+                        <!-- Knob -->
+                        <div id="knob-<?= (int)$r['id'] ?>"
+                            class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full
+                                    transition-transform duration-300">
+                        </div>
+                    </label>
+                    </div>
+
                 </div>
+                <?php endforeach; ?>
                 </div>
+
+
             </main>
         </div>
         
     </div>
 
     <?php include "includes/footer.php"?>
+
+    <script>
+    function toggleRoomLock(roomId, checkbox) {
+    const track = document.getElementById('track-' + roomId);
+    const knob  = document.getElementById('knob-' + roomId);
+    const text  = document.getElementById('lockText-' + roomId);
+
+    const isUnlock = checkbox.checked;
+
+    // Animate UI
+    if (isUnlock) {
+        track.classList.remove('bg-gray-300');
+        track.classList.add('bg-green-500');
+        knob.style.transform = 'translateX(20px)';
+        text.textContent = 'Unlocked';
+    } else {
+        track.classList.remove('bg-green-500');
+        track.classList.add('bg-gray-300');
+        knob.style.transform = 'translateX(0)';
+        text.textContent = 'Locked';
+    }
+
+    // Send command to backend
+    fetch('/tapintapoutrfid/api/remote_control.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+        door_id: roomId,
+        action: isUnlock ? 'UNLOCK' : 'LOCK'
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status !== 'ok') {
+        throw new Error('Failed');
+        }
+    })
+    .catch(() => {
+        // rollback UI if failed
+        checkbox.checked = !isUnlock;
+        toggleRoomLock(roomId, checkbox);
+        alert('Network error');
+    });
+    }
+    </script>
+
+
+
+
 </body>
 </html>
