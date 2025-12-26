@@ -44,7 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $room_id = (int) ($_POST['room_id'] ?? 0);
     $faculty_id = (int) ($_POST['faculty_id'] ?? 0);
-    $day = $_POST['day_of_week'] ?? '';
+    $daysArr = $_POST['days'] ?? [];
+    if (empty($daysArr)) {
+        $errors[] = "Please select at least one day.";
+    }
+    $days = implode(',', $daysArr);
     $start_time = $_POST['start_time'] ?? '';
     $end_time = $_POST['end_time'] ?? '';
     $subject_code = trim($_POST['subject_code'] ?? '');
@@ -55,45 +59,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Basic validation
     if ($room_id <= 0) $errors[] = "Please select a room.";
     if ($faculty_id <= 0) $errors[] = "Please select a faculty member.";
-    if (!in_array($day, ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'])) $errors[] = "Invalid day.";
+    
     if ($start_time === '' || $end_time === '') $errors[] = "Start and end times are required.";
     if ($start_time >= $end_time) $errors[] = "Start time must be before end time.";
 
-    // OPTIONAL: check overlapping schedules for same room and day
-    if (empty($errors)) {
-        $overlapCheckSql = "
-            SELECT COUNT(*) FROM schedules
-            WHERE room_id = ? AND day_of_week = ? 
-              AND NOT (end_time <= ? OR start_time >= ?)";
-        $stmtCheck = $conn->prepare($overlapCheckSql);
-        // For edit, exclude current id
+    foreach ($daysArr as $d) {
         if ($mode === 'edit' && $id) {
-            $overlapCheckSql .= " AND id != ?";
-            $stmtCheck = $conn->prepare("
+            $stmt = $conn->prepare("
                 SELECT COUNT(*) FROM schedules
-                WHERE room_id = ? AND day_of_week = ? 
-                  AND NOT (end_time <= ? OR start_time >= ?)
-                  AND id != ?");
-            $stmtCheck->bind_param("isssi", $room_id, $day, $start_time, $end_time, $id);
+                WHERE room_id = ?
+                AND FIND_IN_SET(?, days)
+                AND NOT (end_time <= ? OR start_time >= ?)
+                AND id != ?
+            ");
+            $stmt->bind_param("isssi", $room_id, $d, $start_time, $end_time, $id);
         } else {
-            $stmtCheck->bind_param("isss", $room_id, $day, $start_time, $end_time);
+            $stmt = $conn->prepare("
+                SELECT COUNT(*) FROM schedules
+                WHERE room_id = ?
+                AND FIND_IN_SET(?, days)
+                AND NOT (end_time <= ? OR start_time >= ?)
+            ");
+            $stmt->bind_param("isss", $room_id, $d, $start_time, $end_time);
         }
-        $stmtCheck->execute();
-        $stmtCheck->bind_result($overlapCnt);
-        $stmtCheck->fetch();
-        $stmtCheck->close();
-
-        if ($overlapCnt > 0) {
-            $errors[] = "Schedule overlaps with an existing schedule in this room on $day.";
+    
+        $stmt->execute();
+        $stmt->bind_result($cnt);
+        $stmt->fetch();
+        $stmt->close();
+    
+        if ($cnt > 0) {
+            $errors[] = "Schedule overlaps on $d.";
+            break;
         }
     }
+    
 
     if (empty($errors)) {
         if ($mode === 'add') {
             $ins = $conn->prepare("INSERT INTO schedules
-                (room_id, faculty_id, subject_code, subject_name, day_of_week, start_time, end_time, academic_year, semester)
+            (room_id, faculty_id, subject_code, subject_name, days, start_time, end_time, academic_year, semester)            
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $ins->bind_param("iisssssss", $room_id, $faculty_id, $subject_code, $subject_name, $day, $start_time, $end_time, $academic_year, $semester);
+            $ins->bind_param("iisssssss", $room_id, $faculty_id, $subject_code, $subject_name, $days, $start_time, $end_time, $academic_year, $semester);
             if ($ins->execute()) {
                 $success = "Schedule added.";
             } else {
@@ -101,8 +108,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $ins->close();
         } elseif ($mode === 'edit' && $id) {
-            $upd = $conn->prepare("UPDATE schedules SET room_id=?, faculty_id=?, subject_code=?, subject_name=?, day_of_week=?, start_time=?, end_time=?, academic_year=?, semester=? WHERE id=?");
-            $upd->bind_param("iisssssssi", $room_id, $faculty_id, $subject_code, $subject_name, $day, $start_time, $end_time, $academic_year, $semester, $id);
+            $upd = $conn->prepare("UPDATE schedules SET
+            room_id=?, faculty_id=?, subject_code=?, subject_name=?,
+            days=?, start_time=?, end_time=?, academic_year=?, semester=?
+            WHERE id=?");
+            $upd->bind_param("iisssssssi", $room_id, $faculty_id, $subject_code, $subject_name, $days, $start_time, $end_time, $academic_year, $semester, $id);
             if ($upd->execute()) {
                 $success = "Schedule updated.";
             } else {
@@ -131,7 +141,7 @@ $sql = "SELECT s.*, r.room_code, r.room_name, u.fullname AS faculty_name
         FROM schedules s
         JOIN rooms r ON s.room_id = r.id
         JOIN users u ON s.faculty_id = u.id
-        ORDER BY FIELD(day_of_week, 'Mon','Tue','Wed','Thu','Fri','Sat','Sun'), start_time";
+        ORDER BY start_time";
 $res = $conn->query($sql);
 $schedules = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
 
@@ -258,18 +268,22 @@ include "includes/header.php";
                     </div>
 
                     <div>
-                    <label class="block text-sm mb-1">Day</label>
-                    <select name="day_of_week" class="w-full border rounded px-3 py-2" required>
+                    <label class="block text-sm mb-1">Days</label>
+                    <div class="grid grid-cols-4 gap-2 text-sm w-full border rounded px-3 py-2">
                         <?php
                         $days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-                        $curr = $isEdit ? $editSchedule['day_of_week'] : '';
-                        foreach ($days as $d) {
-                            $sel = ($curr === $d) ? 'selected' : '';
-                            echo "<option value=\"$d\" $sel>$d</option>";
-                        }
+                        $selectedDays = $isEdit ? explode(',', $editSchedule['days']) : [];
+                        foreach ($days as $d):
                         ?>
-                    </select>
+                        <label class="flex items-center gap-1">
+                            <input type="checkbox" name="days[]" value="<?= $d ?>"
+                            <?= in_array($d, $selectedDays) ? 'checked' : '' ?>>
+                            <?= $d ?>
+                        </label>
+                        <?php endforeach; ?>
                     </div>
+                    </div>
+
 
                     <div>
                     <label class="block text-sm mb-1">Start Time</label>
@@ -296,10 +310,25 @@ include "includes/header.php";
                     </div>
 
                     <div>
-                    <label class="block text-sm mb-1">Semester</label>
-                    <input type="text" name="semester" class="w-full border rounded px-3 py-2"
-                        value="<?php echo htmlspecialchars($isEdit ? $editSchedule['semester'] : ''); ?>">
+                    <label class="block text-sm mb-1">Academic Year</label>
+                    <input type="text" name="academic_year" class="w-full border rounded px-3 py-2"
+                        value="<?php echo htmlspecialchars($isEdit ? $editSchedule['academic_year'] : ''); ?>">
                     </div>
+
+                    <div>
+                    <label class="block text-sm mb-1">Semester</label>
+                    <select name="semester" class="w-full border rounded px-3 py-2">
+                        <option value="">-- Select Semester --</option>
+                        <option value="1st"
+                            <?= ($isEdit && $editSchedule['semester'] === '1st') ? 'selected' : '' ?>>
+                            1st Semester
+                        </option>
+                        <option value="2nd"
+                            <?= ($isEdit && $editSchedule['semester'] === '2nd') ? 'selected' : '' ?>>
+                            2nd Semester
+                        </option>
+                    </select>
+
 
                     <div class="md:col-span-2 flex justify-end mt-2">
                     <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded">
@@ -323,7 +352,7 @@ include "includes/header.php";
                         <th class="px-3 py-2 text-left">Day</th>
                         <th class="px-3 py-2 text-left">Time</th>
                         <th class="px-3 py-2 text-left">Subject</th>
-                        <th class="px-3 py-2 text-left">Sem</th>
+                        <th class="px-3 py-2 text-left">AY/Sem</th>
                         <th class="px-3 py-2 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -336,10 +365,10 @@ include "includes/header.php";
                             <td class="px-3 py-2"><?php echo (int)$s['id']; ?></td>
                             <td class="px-3 py-2"><?php echo htmlspecialchars($s['room_code'] . ' — ' . $s['room_name']); ?></td>
                             <td class="px-3 py-2"><?php echo htmlspecialchars($s['faculty_name']); ?></td>
-                            <td class="px-3 py-2"><?php echo htmlspecialchars($s['day_of_week']); ?></td>
+                            <td class="px-3 py-2"><?php echo htmlspecialchars(str_replace(',', ', ', $s['days'])); ?></td>
                             <td class="px-3 py-2"><?php echo htmlspecialchars(substr($s['start_time'],0,5) . ' - ' . substr($s['end_time'],0,5)); ?></td>
                             <td class="px-3 py-2"><?php echo htmlspecialchars($s['subject_code'] . ' ' . $s['subject_name']); ?></td>
-                            <td class="px-3 py-2"><?php echo htmlspecialchars($s['semester']); ?></td>
+                            <td class="px-3 py-2"><?php echo htmlspecialchars($s['academic_year'] . '/' . $s['semester']); ?></td>
                             <td class="px-3 py-2 text-right">
                                 <a href="schedules.php?edit=<?php echo (int)$s['id']; ?>" class="text-blue-600 hover:underline text-xs">Edit</a>
                                 <a href="schedules.php?delete=<?php echo (int)$s['id']; ?>" class="text-red-600 hover:underline text-xs" onclick="return confirm('Delete this schedule?');">Delete</a>

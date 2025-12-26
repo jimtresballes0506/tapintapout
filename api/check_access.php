@@ -119,10 +119,11 @@ if (!$tag) {
                 FROM schedules
                 WHERE room_id = ?
                 AND faculty_id = ?
-                AND day_of_week = ?
+                AND FIND_IN_SET(?, days)
                 AND ? BETWEEN start_time AND end_time
                 LIMIT 1
             ");
+
 
             $sched->bind_param(
                 'iiss',
